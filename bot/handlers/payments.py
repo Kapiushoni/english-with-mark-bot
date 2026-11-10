@@ -19,7 +19,7 @@ from bot.services import (
     sub_is_active,
     sub_status_text,
 )
-from bot.tariffs import TARIFFS
+from bot.tariffs import TARIFFS, tariff_description
 from bot.texts import t
 
 router = Router(name="payments")
@@ -65,7 +65,7 @@ async def on_tariff(
     await callback.bot.send_invoice(
         chat_id=user.id,
         title=tariff.title[lang],
-        description=tariff.description[lang],
+        description=tariff_description(tariff, lang, settings.prices),
         payload=make_payload(tariff.code, user.id),
         currency=STARS_CURRENCY,
         prices=[LabeledPrice(label=tariff.title[lang], amount=price)],

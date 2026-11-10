@@ -145,6 +145,7 @@ TEXTS: dict[str, dict[str, str]] = {
     "cmd_menu": {"uk": "Меню", "en": "Menu"},
     "cmd_terms": {"uk": "Умови", "en": "Terms"},
     "cmd_paysupport": {"uk": "Підтримка з оплат", "en": "Payment support"},
+    "quarter_discount": {"uk": "Вигідніше на {pct}%, ніж помісячно.", "en": "{pct}% cheaper than monthly."},
     "gift_access": {"uk": "Подарунковий доступ", "en": "Gift access"},
     # --- Admin texts (shown in the language the admin picked in the bot) ---
     "admin_help": {

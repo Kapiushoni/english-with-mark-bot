@@ -1,5 +1,7 @@
 from dataclasses import dataclass
 
+from bot.texts import t
+
 
 @dataclass(frozen=True)
 class Tariff:
@@ -28,8 +30,8 @@ TARIFFS: dict[str, Tariff] = {
             days=90,
             title={"uk": "3 місяці доступу", "en": "3 months access"},
             description={
-                "uk": "Доступ до закритого каналу на 90 днів. Вигідніше на 20%, ніж помісячно.",
-                "en": "90 days of access to the private channel. 20% cheaper than monthly.",
+                "uk": "Доступ до закритого каналу на 90 днів.",
+                "en": "90 days of access to the private channel.",
             },
         ),
         Tariff(
@@ -43,3 +45,17 @@ TARIFFS: dict[str, Tariff] = {
         ),
     ]
 }
+
+
+def quarter_discount_pct(prices: dict[str, int]) -> int:
+    """Quarter discount vs. three monthly payments, in whole percent (rounded down, never negative)."""
+    three_months = prices["month"] * 3
+    return max(0, (three_months - prices["quarter"]) * 100 // three_months)
+
+
+def tariff_description(tariff: Tariff, lang: str, prices: dict[str, int]) -> str:
+    """Invoice description; the quarter plan gets a discount line only when it is actually cheaper."""
+    text = tariff.description[lang]
+    if tariff.code == "quarter" and (pct := quarter_discount_pct(prices)) > 0:
+        text += " " + t(lang, "quarter_discount", pct=pct)
+    return text
