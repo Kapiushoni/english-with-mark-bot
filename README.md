@@ -1,80 +1,82 @@
-# English with Mark — бот платного доступа (демо)
+# English with Mark — paid channel access bot
 
-Демо-проект для портфолио: Telegram-бот, который продаёт доступ в закрытый канал за Telegram Stars.
+A Telegram bot that sells access to a private Telegram channel for **Telegram Stars** and manages
+subscriptions end to end: payment, single-use invite links, reminders, and automatic removal on expiry.
 
-## Что умеет
+Built as a portfolio demo for an online English course; the same setup fits any paid community,
+course, or members-only channel.
 
-- Выбор языка (українська / English) и меню: тарифы, моя подписка, о курсе, поддержка.
-- 3 тарифа: 1 месяц, 3 месяца, навсегда. Оплата в Telegram Stars прямо в чате.
-- После оплаты выдаёт личную одноразовую ссылку в канал (1 вход, действует 24 часа).
-- Продление суммируется: оставшиеся дни не сгорают.
-- Напоминания за 3 дня и за 1 день до конца подписки.
-- Автоматически удаляет из канала, когда подписка закончилась.
-- Уведомляет админа о каждой оплате.
-- Админ-команды: `/stats`, `/grant`, `/revoke`, `/refund` (возврат звёзд), `/broadcast`.
-- Обязательные для оплаты в Stars команды `/terms` и `/paysupport`.
+## Features
 
-## Стек
+- **Bilingual UI** — Ukrainian and English, chosen by the user; admin messages follow the admin's language.
+- **Three plans** — 1 month, 3 months, lifetime. Prices are configured in `.env`.
+- **Native payments** — Telegram Stars invoices in the chat, with server-side validation in `pre_checkout`.
+- **Secure access** — a personal single-use invite link (1 join, valid for 24 hours) after each payment.
+- **Fair renewals** — remaining days are carried over when a subscription is extended.
+- **Retention** — reminders 3 days and 1 day before expiry, with a one-tap renew button.
+- **Automatic enforcement** — expired members are removed from the channel.
+- **Admin tools** — `/stats`, `/grant`, `/revoke`, `/refund` (Stars refund), `/broadcast`, payment notifications.
+- **Telegram compliance** — `/terms` and `/paysupport` commands required for Stars payments.
+- **Idempotent payments** — a payment is never processed twice.
 
-Python 3.12+, aiogram 3, SQLAlchemy 2 (async), SQLite локально / PostgreSQL в Docker.
+## Tech stack
 
-## Запуск локально
+- Python 3.12, [aiogram 3](https://docs.aiogram.dev/) (async)
+- SQLAlchemy 2 (async) — SQLite for local runs, PostgreSQL 16 in production
+- pydantic-settings for configuration
+- Docker & Docker Compose (multi-arch: runs on x86 and ARM)
 
-1. Создай бота в [@BotFather](https://t.me/BotFather), скопируй токен.
-2. Создай приватный канал. Добавь бота администратором и включи ему права на приглашение
-   по ссылке и управление подписчиками (если при удалении из канала будет ошибка прав —
-   включи все права, кроме добавления админов).
-3. Установи зависимости:
+## Project structure
+
+| Path | Purpose |
+| --- | --- |
+| `bot/texts.py` | All user and admin texts (uk / en) |
+| `bot/tariffs.py` | Plans: duration, titles, descriptions |
+| `bot/config.py` | Settings from environment / `.env`, including prices |
+| `bot/handlers/` | User menu, payments, admin commands |
+| `bot/services.py` | Subscription logic, invite links, notifications |
+| `bot/scheduler.py` | Reminders and removal of expired members |
+
+## Quick start (local)
+
+1. Create a bot with [@BotFather](https://t.me/BotFather) and copy the token.
+2. Create a private channel and add the bot as an admin with permission to invite users via link
+   and ban users.
+3. Install dependencies:
    ```bash
    python -m venv .venv
    source .venv/bin/activate        # Windows: .venv\Scripts\activate
    pip install -r requirements.txt
    ```
-4. Скопируй `.env.example` в `.env` и впиши `BOT_TOKEN`. `CHANNEL_ID` и `ADMIN_IDS` пока можно не трогать.
-5. Запусти бота:
+4. Copy `.env.example` to `.env` and set `BOT_TOKEN`.
+5. Run the bot:
    ```bash
    python -m bot
    ```
-6. Напиши боту `/id` — он пришлёт твой Telegram ID. Впиши его в `ADMIN_IDS` и перезапусти бота.
-7. Перешли боту любой пост из своего канала — он пришлёт ID канала. Впиши его в `CHANNEL_ID` и перезапусти.
-8. Готово: `/start` — меню пользователя, `/admin` — админ-панель.
+6. Send `/id` to the bot, put your ID into `ADMIN_IDS`, and restart.
+7. Forward any post from your channel to the bot, put the returned ID into `CHANNEL_ID`, and restart.
+8. `/start` opens the user menu, `/admin` opens the admin panel.
 
-## Как протестировать оплату
-
-Звёзды покупаются за реальные деньги, но тест обойдётся почти бесплатно:
-
-1. В `bot/tariffs.py` временно поставь `stars=1` у одного тарифа.
-2. Купи пару звёзд в Telegram и оплати тариф.
-3. Проверь, что пришла ссылка и вход в канал работает.
-4. Верни звёзды командой `/refund <твой_id>`.
-
-Проверить напоминания и удаление без ожидания можно так: `/grant <id> 1`, затем подождать
-следующей проверки (по умолчанию раз в 10 минут; для теста поставь `CHECK_INTERVAL_MINUTES=1`).
-
-## Запуск на сервере (Docker)
+## Deploy with Docker
 
 ```bash
-cp .env.example .env    # заполни значения
-echo "POSTGRES_PASSWORD=придумай_пароль" >> .env
+cp .env.example .env                                  # fill in the values
+sed -i "s/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=$(openssl rand -hex 32)/" .env
 docker compose up -d --build
 docker compose logs -f bot
 ```
 
-Бот и база перезапускаются автоматически, данные базы хранятся в Docker volume.
+The bot and the database restart automatically; data is stored in a Docker volume.
 
-## Где что менять
+## Testing payments
 
-| Что | Файл |
-| --- | --- |
-| Тексты (UA/EN) | `bot/texts.py` |
-| Тарифы и цены | `bot/tariffs.py` |
-| Кнопки | `bot/keyboards.py` |
-| Логика подписок | `bot/services.py` |
-| Напоминания и удаление | `bot/scheduler.py` |
+Set a plan price to `1` in `.env` (for example `PRICE_MONTH=1`), restart the bot, pay with a few Stars,
+check that the invite link works, then refund with `/refund <your_id>`.
 
-## Что добавить для клиентского проекта
+To test reminders and expiry without waiting, use `/grant <id> 1` and set `CHECK_INTERVAL_MINUTES=1`.
 
-- Оплата картой через лендинг (WayForPay / monobank / Stripe) + вебхук на FastAPI, который выдаёт доступ.
-- Миграции базы через Alembic вместо автосоздания таблиц.
-- Политика конфиденциальности бота (Telegram требует её для ботов).
-- Бэкапы Postgres по расписанию.
+## Possible extensions
+
+- Card payments via a landing page (Stripe, WayForPay, monobank) with a webhook that grants access
+- Alembic migrations instead of automatic table creation
+- A privacy policy for the bot

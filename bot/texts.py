@@ -1,4 +1,4 @@
-"""Все тексты бота на двух языках. Меняй здесь — код трогать не нужно."""
+"""All bot texts in two languages (uk, en). Edit them here, no code changes needed."""
 
 TEXTS: dict[str, dict[str, str]] = {
     "choose_lang": {
@@ -137,10 +137,117 @@ TEXTS: dict[str, dict[str, str]] = {
         "en": "Your payment has been refunded and channel access is closed.",
     },
     "your_id": {"uk": "Ваш Telegram ID: <code>{id}</code>", "en": "Your Telegram ID: <code>{id}</code>"},
+    # Language picker buttons
+    "btn_lang_uk": {"uk": "🇺🇦 Українська", "en": "🇺🇦 Українська"},
+    "btn_lang_en": {"uk": "🇬🇧 English", "en": "🇬🇧 English"},
+    # Bot command descriptions (Telegram command menu)
+    "cmd_start": {"uk": "Головне меню", "en": "Main menu"},
+    "cmd_menu": {"uk": "Меню", "en": "Menu"},
+    "cmd_terms": {"uk": "Умови", "en": "Terms"},
+    "cmd_paysupport": {"uk": "Підтримка з оплат", "en": "Payment support"},
+    "gift_access": {"uk": "Подарунковий доступ", "en": "Gift access"},
+    # --- Admin texts (shown in the language the admin picked in the bot) ---
+    "admin_help": {
+        "uk": (
+            "<b>Адмін-панель</b>\n\n"
+            "/stats — статистика\n"
+            "/grant <code>user_id днів</code> — видати доступ (наприклад <code>/grant 123456 30</code>, "
+            "<code>/grant 123456 life</code> — назавжди)\n"
+            "/revoke <code>user_id</code> — закрити доступ\n"
+            "/refund <code>user_id</code> — повернути зірки за останню оплату й закрити доступ\n"
+            "/broadcast <code>текст</code> — розсилка всім користувачам бота\n\n"
+            "Перешліть сюди будь-який пост із каналу — бот покаже його ID."
+        ),
+        "en": (
+            "<b>Admin panel</b>\n\n"
+            "/stats — statistics\n"
+            "/grant <code>user_id days</code> — grant access (e.g. <code>/grant 123456 30</code>, "
+            "<code>/grant 123456 life</code> — lifetime)\n"
+            "/revoke <code>user_id</code> — revoke access\n"
+            "/refund <code>user_id</code> — refund the last payment in Stars and revoke access\n"
+            "/broadcast <code>text</code> — message all bot users\n\n"
+            "Forward any post from the channel here and the bot will show its ID."
+        ),
+    },
+    "admin_stats": {
+        "uk": (
+            "<b>Статистика</b>\n\n"
+            "Користувачів: {users} (заблокували бота: {blocked})\n"
+            "Активних підписок: {active}\n"
+            "Оплат: {payments}\n"
+            "Виручка: {revenue} ⭐"
+        ),
+        "en": (
+            "<b>Statistics</b>\n\n"
+            "Users: {users} (blocked the bot: {blocked})\n"
+            "Active subscriptions: {active}\n"
+            "Payments: {payments}\n"
+            "Revenue: {revenue} ⭐"
+        ),
+    },
+    "grant_usage": {
+        "uk": "Формат: <code>/grant user_id днів</code> або <code>/grant user_id life</code>",
+        "en": "Usage: <code>/grant user_id days</code> or <code>/grant user_id life</code>",
+    },
+    "grant_bad_args": {
+        "uk": "user_id і кількість днів мають бути числами (або life).",
+        "en": "user_id and days must be numbers (or life).",
+    },
+    "user_not_found": {
+        "uk": "Цей користувач ще не запускав бота. Попросіть його натиснути /start.",
+        "en": "This user hasn't started the bot yet. Ask them to press /start.",
+    },
+    "grant_link_failed": {
+        "uk": "Доступ видано, але посилання не створилося: {error}",
+        "en": "Access granted, but the invite link couldn't be created: {error}",
+    },
+    "grant_done": {"uk": "✅ Доступ видано. {status}", "en": "✅ Access granted. {status}"},
+    "not_delivered": {"uk": "⚠️ Повідомлення не доставлено.", "en": "⚠️ The message wasn't delivered."},
+    "revoke_usage": {"uk": "Формат: <code>/revoke user_id</code>", "en": "Usage: <code>/revoke user_id</code>"},
+    "no_subscription": {"uk": "У користувача немає підписки.", "en": "This user has no subscription."},
+    "revoked": {"uk": "✅ Доступ закрито.", "en": "✅ Access revoked."},
+    "refund_usage": {"uk": "Формат: <code>/refund user_id</code>", "en": "Usage: <code>/refund user_id</code>"},
+    "refund_not_found": {"uk": "Не знайдено оплат для повернення.", "en": "No payments found to refund."},
+    "refund_rejected": {"uk": "Telegram відхилив повернення: {error}", "en": "Telegram rejected the refund: {error}"},
+    "refund_done": {
+        "uk": "✅ Повернено {amount} ⭐, доступ закрито.",
+        "en": "✅ Refunded {amount} ⭐, access revoked.",
+    },
+    "broadcast_usage": {
+        "uk": "Формат: <code>/broadcast текст повідомлення</code>",
+        "en": "Usage: <code>/broadcast message text</code>",
+    },
+    "broadcast_start": {
+        "uk": "Починаю розсилку на {count} користувачів…",
+        "en": "Starting broadcast to {count} users…",
+    },
+    "broadcast_done": {
+        "uk": "✅ Розсилку завершено: доставлено {sent} з {total}.",
+        "en": "✅ Broadcast finished: delivered {sent} of {total}.",
+    },
+    "channel_id": {
+        "uk": "ID каналу «{title}»: <code>{id}</code>\nВставте його в .env як CHANNEL_ID.",
+        "en": "Channel “{title}” ID: <code>{id}</code>\nPut it in .env as CHANNEL_ID.",
+    },
+    "admin_new_payment": {
+        "uk": "💰 Нова оплата: {who} (<code>{id}</code>)\nТариф: {tariff}, {amount} ⭐",
+        "en": "💰 New payment: {who} (<code>{id}</code>)\nPlan: {tariff}, {amount} ⭐",
+    },
+    "admin_paid_no_link": {
+        "uk": "❗ Оплата пройшла, але посилання для {id} не створилося: {error}",
+        "en": "❗ Payment received, but the invite link for {id} couldn't be created: {error}",
+    },
+    "admin_link_failed": {
+        "uk": "❗ Не вдалося створити посилання для {id}: {error}",
+        "en": "❗ Couldn't create an invite link for {id}: {error}",
+    },
 }
 
 
+LANGS = ("uk", "en")
+
+
 def t(lang: str, key: str, **kwargs: object) -> str:
-    lang = lang if lang in ("uk", "en") else "uk"
+    lang = lang if lang in LANGS else "uk"
     text = TEXTS[key][lang]
     return text.format(**kwargs) if kwargs else text

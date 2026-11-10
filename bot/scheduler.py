@@ -50,7 +50,7 @@ async def check_subscriptions(bot: Bot, session_maker: async_sessionmaker, setti
 
 
 async def subscription_watcher(bot: Bot, session_maker: async_sessionmaker, settings: Settings) -> None:
-    """Фоновая задача: раз в N минут проверяет подписки."""
+    """Background task: checks subscriptions every N minutes."""
     while True:
         try:
             await check_subscriptions(bot, session_maker, settings)

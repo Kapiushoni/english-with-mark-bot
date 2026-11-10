@@ -1,4 +1,5 @@
 import asyncio
+import html
 import logging
 
 from aiogram import Bot, F, Router
@@ -12,6 +13,7 @@ from bot.config import Settings
 from bot.db import Payment, Subscription, User, utcnow
 from bot.services import (
     create_invite_link,
+    detect_lang,
     extend_subscription,
     get_subscription,
     remove_from_channel,
@@ -25,21 +27,18 @@ from bot.texts import t
 router = Router(name="admin")
 logger = logging.getLogger(__name__)
 
-ADMIN_HELP = (
-    "<b>Админ-панель</b>\n\n"
-    "/stats — статистика\n"
-    "/grant <code>user_id дни</code> — выдать доступ (например <code>/grant 123456 30</code>, "
-    "<code>/grant 123456 life</code> — навсегда)\n"
-    "/revoke <code>user_id</code> — закрыть доступ\n"
-    "/refund <code>user_id</code> — вернуть звёзды за последнюю оплату и закрыть доступ\n"
-    "/broadcast <code>текст</code> — рассылка всем пользователям бота\n\n"
-    "Перешлите сюда любой пост из канала — бот покажет его ID."
-)
-
 
 class IsAdmin(Filter):
-    async def __call__(self, message: Message, settings: Settings) -> bool:
-        return message.from_user is not None and message.from_user.id in settings.admin_ids
+    """Lets only admins through and passes their bot language to handlers as `lang`."""
+
+    async def __call__(
+        self, message: Message, settings: Settings, session_maker: async_sessionmaker
+    ) -> bool | dict[str, str]:
+        if message.from_user is None or message.from_user.id not in settings.admin_ids:
+            return False
+        async with session_maker() as session:
+            admin = await session.get(User, message.from_user.id)
+        return {"lang": admin.lang if admin else detect_lang(message.from_user.language_code)}
 
 
 router.message.filter(IsAdmin())
@@ -55,12 +54,12 @@ def parse_user_id(command: CommandObject) -> int | None:
 
 
 @router.message(Command("admin"))
-async def cmd_admin(message: Message) -> None:
-    await message.answer(ADMIN_HELP)
+async def cmd_admin(message: Message, lang: str) -> None:
+    await message.answer(t(lang, "admin_help"))
 
 
 @router.message(Command("stats"))
-async def cmd_stats(message: Message, session_maker: async_sessionmaker) -> None:
+async def cmd_stats(message: Message, session_maker: async_sessionmaker, lang: str) -> None:
     now = utcnow()
     async with session_maker() as session:
         users = await session.scalar(select(func.count(User.id)))
@@ -76,84 +75,98 @@ async def cmd_stats(message: Message, session_maker: async_sessionmaker) -> None
             select(func.coalesce(func.sum(Payment.amount), 0)).where(Payment.refunded.is_(False))
         )
     await message.answer(
-        "<b>Статистика</b>\n\n"
-        f"Пользователей: {users} (заблокировали бота: {blocked})\n"
-        f"Активных подписок: {active}\n"
-        f"Оплат: {payments}\n"
-        f"Выручка: {revenue} ⭐"
+        t(lang, "admin_stats", users=users, blocked=blocked, active=active, payments=payments, revenue=revenue)
     )
 
 
 @router.message(Command("grant"))
 async def cmd_grant(
-    message: Message, command: CommandObject, session_maker: async_sessionmaker, settings: Settings, bot: Bot
+    message: Message,
+    command: CommandObject,
+    session_maker: async_sessionmaker,
+    settings: Settings,
+    bot: Bot,
+    lang: str,
 ) -> None:
     args = (command.args or "").split()
     if len(args) != 2:
-        await message.answer("Формат: <code>/grant user_id дни</code> или <code>/grant user_id life</code>")
+        await message.answer(t(lang, "grant_usage"))
         return
     try:
         user_id = int(args[0])
         days = None if args[1].lower() == "life" else int(args[1])
     except ValueError:
-        await message.answer("user_id и дни должны быть числами (или life).")
+        await message.answer(t(lang, "grant_bad_args"))
         return
 
     async with session_maker() as session:
         user = await session.get(User, user_id)
         if not user:
-            await message.answer("Этот пользователь ещё не запускал бота. Попросите его нажать /start.")
+            await message.answer(t(lang, "user_not_found"))
             return
         current = await get_subscription(session, user_id)
         if days is None:
             tariff_code = "lifetime"
         elif sub_is_active(current) and current.tariff in TARIFFS:
-            # Активная платная подписка: продлеваем срок, тариф оставляем прежним.
+            # Active paid subscription: extend the term, keep the same plan.
             tariff_code = current.tariff
         else:
             tariff_code = "gift"
         sub = await extend_subscription(session, user_id, tariff_code, days)
         await session.commit()
-        status = sub_status_text(user.lang, sub)
-        lang = user.lang
+        admin_status = sub_status_text(lang, sub)
 
         try:
             link = await create_invite_link(bot, settings.channel_id, user_id)
         except TelegramBadRequest as e:
-            await message.answer(f"Доступ выдан, но ссылка не создалась: {e}")
+            await message.answer(t(lang, "grant_link_failed", error=html.escape(str(e))))
             return
-        sent = await safe_send(bot, session, user_id, t(lang, "granted", status=status, link=link))
+        user_text = t(user.lang, "granted", status=sub_status_text(user.lang, sub), link=link)
+        sent = await safe_send(bot, session, user_id, user_text)
         await session.commit()
 
-    await message.answer(f"✅ Доступ выдан. {status}" + ("" if sent else "\n⚠️ Сообщение не доставлено."))
+    reply = t(lang, "grant_done", status=admin_status)
+    if not sent:
+        reply += "\n" + t(lang, "not_delivered")
+    await message.answer(reply)
 
 
 @router.message(Command("revoke"))
 async def cmd_revoke(
-    message: Message, command: CommandObject, session_maker: async_sessionmaker, settings: Settings, bot: Bot
+    message: Message,
+    command: CommandObject,
+    session_maker: async_sessionmaker,
+    settings: Settings,
+    bot: Bot,
+    lang: str,
 ) -> None:
     user_id = parse_user_id(command)
     if user_id is None:
-        await message.answer("Формат: <code>/revoke user_id</code>")
+        await message.answer(t(lang, "revoke_usage"))
         return
     async with session_maker() as session:
         sub = await get_subscription(session, user_id)
         if not sub:
-            await message.answer("У пользователя нет подписки.")
+            await message.answer(t(lang, "no_subscription"))
             return
         sub.is_active = False
         await session.commit()
     await remove_from_channel(bot, settings.channel_id, user_id)
-    await message.answer("✅ Доступ закрыт.")
+    await message.answer(t(lang, "revoked"))
 
 
 @router.message(Command("refund"))
 async def cmd_refund(
-    message: Message, command: CommandObject, session_maker: async_sessionmaker, settings: Settings, bot: Bot
+    message: Message,
+    command: CommandObject,
+    session_maker: async_sessionmaker,
+    settings: Settings,
+    bot: Bot,
+    lang: str,
 ) -> None:
     user_id = parse_user_id(command)
     if user_id is None:
-        await message.answer("Формат: <code>/refund user_id</code>")
+        await message.answer(t(lang, "refund_usage"))
         return
     async with session_maker() as session:
         payment = await session.scalar(
@@ -163,12 +176,12 @@ async def cmd_refund(
             .limit(1)
         )
         if not payment:
-            await message.answer("Не найдено оплат для возврата.")
+            await message.answer(t(lang, "refund_not_found"))
             return
         try:
             await bot.refund_star_payment(user_id=user_id, telegram_payment_charge_id=payment.charge_id)
         except TelegramBadRequest as e:
-            await message.answer(f"Telegram отклонил возврат: {e}")
+            await message.answer(t(lang, "refund_rejected", error=html.escape(str(e))))
             return
         payment.refunded = True
         sub = await get_subscription(session, user_id)
@@ -180,33 +193,30 @@ async def cmd_refund(
         if user:
             await safe_send(bot, session, user_id, t(user.lang, "refunded"))
             await session.commit()
-    await message.answer(f"✅ Возвращено {payment.amount} ⭐, доступ закрыт.")
+    await message.answer(t(lang, "refund_done", amount=payment.amount))
 
 
 @router.message(Command("broadcast"))
 async def cmd_broadcast(
-    message: Message, command: CommandObject, session_maker: async_sessionmaker, bot: Bot
+    message: Message, command: CommandObject, session_maker: async_sessionmaker, bot: Bot, lang: str
 ) -> None:
     if not command.args:
-        await message.answer("Формат: <code>/broadcast текст сообщения</code>")
+        await message.answer(t(lang, "broadcast_usage"))
         return
     async with session_maker() as session:
         user_ids = (await session.scalars(select(User.id).where(User.is_blocked.is_(False)))).all()
-        await message.answer(f"Начинаю рассылку на {len(user_ids)} пользователей…")
+        await message.answer(t(lang, "broadcast_start", count=len(user_ids)))
         sent = 0
         for uid in user_ids:
             if await safe_send(bot, session, uid, command.args):
                 sent += 1
-            await asyncio.sleep(0.05)  # ~20 сообщений в секунду, в пределах лимитов Telegram
+            await asyncio.sleep(0.05)  # ~20 messages per second, within Telegram limits
         await session.commit()
-    await message.answer(f"✅ Рассылка завершена: доставлено {sent} из {len(user_ids)}.")
+    await message.answer(t(lang, "broadcast_done", sent=sent, total=len(user_ids)))
 
 
 @router.message(F.forward_origin.type == "channel")
-async def on_forward_from_channel(message: Message) -> None:
+async def on_forward_from_channel(message: Message, lang: str) -> None:
     origin = message.forward_origin
     if isinstance(origin, MessageOriginChannel):
-        await message.answer(
-            f"ID канала «{origin.chat.title}»: <code>{origin.chat.id}</code>\n"
-            "Вставьте его в .env как CHANNEL_ID."
-        )
+        await message.answer(t(lang, "channel_id", title=html.escape(origin.chat.title or ""), id=origin.chat.id))

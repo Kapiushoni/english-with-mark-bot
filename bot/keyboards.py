@@ -20,8 +20,8 @@ class LangCB(CallbackData, prefix="l"):
 
 def lang_kb() -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
-    kb.button(text="🇺🇦 Українська", callback_data=LangCB(code="uk"))
-    kb.button(text="🇬🇧 English", callback_data=LangCB(code="en"))
+    kb.button(text=t("uk", "btn_lang_uk"), callback_data=LangCB(code="uk"))
+    kb.button(text=t("en", "btn_lang_en"), callback_data=LangCB(code="en"))
     kb.adjust(2)
     return kb.as_markup()
 
@@ -37,11 +37,11 @@ def main_menu_kb(lang: str) -> InlineKeyboardMarkup:
     return kb.as_markup()
 
 
-def tariffs_kb(lang: str) -> InlineKeyboardMarkup:
+def tariffs_kb(lang: str, prices: dict[str, int]) -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
     for tariff in TARIFFS.values():
         kb.button(
-            text=t(lang, "tariff_button", title=tariff.title[lang], stars=tariff.stars),
+            text=t(lang, "tariff_button", title=tariff.title[lang], stars=prices[tariff.code]),
             callback_data=TariffCB(code=tariff.code),
         )
     kb.button(text=t(lang, "btn_back"), callback_data=MenuCB(action="back"))
@@ -67,7 +67,7 @@ def my_sub_kb(lang: str, active: bool, lifetime: bool) -> InlineKeyboardMarkup:
 
 
 def renew_kb(lang: str) -> InlineKeyboardMarkup:
-    """Кнопка в уведомлениях (напоминание, конец подписки): тарифы придут новым сообщением."""
+    """Button in notifications (reminder, expiry): plans are sent as a new message."""
     kb = InlineKeyboardBuilder()
     kb.button(text=t(lang, "btn_renew"), callback_data=MenuCB(action="renew"))
     return kb.as_markup()

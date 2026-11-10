@@ -6,3 +6,9 @@ __pycache__/
 .idea/
 *.db
 *.bak*
+
+# SSH keys (never commit)
+ssh-key-2026-11-10.key
+ssh-key-2026-11-10.key.pub
+*.key
+*.pem

@@ -13,28 +13,18 @@ from bot.config import Settings
 from bot.db import init_db
 from bot.handlers import admin, payments, user
 from bot.scheduler import subscription_watcher
+from bot.texts import LANGS, t
 
 logger = logging.getLogger("bot")
 
 
 async def set_commands(bot: Bot) -> None:
-    await bot.set_my_commands(
-        [
-            BotCommand(command="start", description="Головне меню"),
-            BotCommand(command="menu", description="Меню"),
-            BotCommand(command="terms", description="Умови"),
-            BotCommand(command="paysupport", description="Підтримка з оплат"),
-        ],
-        language_code="uk",
-    )
-    await bot.set_my_commands(
-        [
-            BotCommand(command="start", description="Main menu"),
-            BotCommand(command="menu", description="Menu"),
-            BotCommand(command="terms", description="Terms"),
-            BotCommand(command="paysupport", description="Payment support"),
+    for lang in LANGS:
+        commands = [
+            BotCommand(command=cmd, description=t(lang, f"cmd_{cmd}")) for cmd in ("start", "menu", "terms", "paysupport")
         ]
-    )
+        # English is also the default for clients in any other language.
+        await bot.set_my_commands(commands, language_code=lang if lang != "en" else None)
 
 
 async def main() -> None:
@@ -44,16 +34,16 @@ async def main() -> None:
     if settings.database_url.startswith("sqlite"):
         Path("data").mkdir(exist_ok=True)
     if not settings.admin_ids:
-        logger.warning("ADMIN_IDS не задан: админ-команды недоступны. Узнать свой ID — команда /id.")
+        logger.warning("ADMIN_IDS is not set: admin commands are disabled. Use /id to get your ID.")
     if not settings.channel_id:
-        logger.warning("CHANNEL_ID не задан: перешлите боту пост из канала, чтобы узнать ID.")
+        logger.warning("CHANNEL_ID is not set: forward a channel post to the bot to get its ID.")
 
     engine = create_async_engine(settings.database_url)
     await init_db(engine)
     session_maker = async_sessionmaker(engine, expire_on_commit=False)
 
     bot = Bot(settings.bot_token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
-    # Всё, что передано в Dispatcher, доступно в хендлерах по имени аргумента.
+    # Everything passed to Dispatcher is available in handlers by argument name.
     dp = Dispatcher(settings=settings, session_maker=session_maker)
     dp.include_routers(admin.router, payments.router, user.router)
 

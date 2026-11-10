@@ -7,7 +7,7 @@ from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 from aiogram.types import InlineKeyboardMarkup
 from aiogram.types import User as TgUser
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from bot.db import Subscription, User, utcnow
 from bot.tariffs import TARIFFS
@@ -22,6 +22,11 @@ def fmt_date(dt: datetime) -> str:
     return dt.strftime("%d.%m.%Y %H:%M")
 
 
+def detect_lang(language_code: str | None) -> str:
+    """Default UI language from the Telegram client language: Ukrainian for uk/ru clients, else English."""
+    return "uk" if (language_code or "").startswith(("uk", "ru")) else "en"
+
+
 async def get_or_create_user(session: AsyncSession, tg_user: TgUser) -> tuple[User, bool]:
     user = await session.get(User, tg_user.id)
     if user:
@@ -29,7 +34,7 @@ async def get_or_create_user(session: AsyncSession, tg_user: TgUser) -> tuple[Us
         user.first_name = tg_user.first_name
         user.is_blocked = False
         return user, False
-    lang = "uk" if (tg_user.language_code or "").startswith(("uk", "ru")) else "en"
+    lang = detect_lang(tg_user.language_code)
     user = User(id=tg_user.id, username=tg_user.username, first_name=tg_user.first_name, lang=lang)
     session.add(user)
     return user, True
@@ -51,22 +56,20 @@ def sub_status_text(lang: str, sub: Subscription | None) -> str:
     if sub.expires_at is None:
         return t(lang, "sub_lifetime")
     tariff = TARIFFS.get(sub.tariff)
-    if tariff:
-        tariff_title = tariff.title[lang]
-    else:  # доступ, выданный админом через /grant
-        tariff_title = "Подарунковий доступ" if lang == "uk" else "Gift access"
+    # Unknown code = access granted by an admin via /grant
+    tariff_title = tariff.title[lang] if tariff else t(lang, "gift_access")
     return t(lang, "sub_active", date=fmt_date(sub.expires_at), tariff=tariff_title)
 
 
 async def extend_subscription(
     session: AsyncSession, user_id: int, tariff_code: str, days: int | None
 ) -> Subscription:
-    """Продлевает подписку на days дней (None = навсегда). Оставшиеся дни не сгорают."""
+    """Extends the subscription by `days` (None = lifetime). Remaining days are kept."""
     sub = await get_subscription(session, user_id)
     now = utcnow()
 
     if sub and sub_is_active(sub) and sub.expires_at is None:
-        return sub  # уже навсегда, продлевать нечего
+        return sub  # already lifetime, nothing to extend
 
     if days is None:
         expires_at = None
@@ -87,7 +90,7 @@ async def extend_subscription(
 
 
 async def create_invite_link(bot: Bot, channel_id: int, user_id: int) -> str:
-    """Одноразовая ссылка: по ней может зайти только один человек, действует 24 часа."""
+    """Single-use invite link: one person can join with it, valid for 24 hours."""
     link = await bot.create_chat_invite_link(
         chat_id=channel_id,
         name=f"user {user_id}"[:32],
@@ -98,12 +101,12 @@ async def create_invite_link(bot: Bot, channel_id: int, user_id: int) -> str:
 
 
 async def remove_from_channel(bot: Bot, channel_id: int, user_id: int) -> None:
-    """Исключает из канала. Бан сразу снимается, чтобы человек мог вернуться после оплаты."""
+    """Removes the user from the channel. The ban is lifted at once so they can rejoin after paying."""
     try:
         await bot.ban_chat_member(chat_id=channel_id, user_id=user_id)
         await bot.unban_chat_member(chat_id=channel_id, user_id=user_id, only_if_banned=True)
     except TelegramBadRequest as e:
-        # Например, пользователь не в канале или это админ канала.
+        # E.g. the user is not in the channel or is a channel admin.
         logger.warning("Can't remove %s from channel: %s", user_id, e)
 
 
@@ -114,7 +117,7 @@ async def safe_send(
     text: str,
     reply_markup: InlineKeyboardMarkup | None = None,
 ) -> bool:
-    """Отправляет сообщение; если бот заблокирован, помечает пользователя."""
+    """Sends a message; if the user blocked the bot, marks them as blocked."""
     try:
         await bot.send_message(user_id, text, reply_markup=reply_markup)
         return True
@@ -128,9 +131,18 @@ async def safe_send(
         return False
 
 
-async def notify_admins(bot: Bot, admin_ids: set[int], text: str) -> None:
-    for admin_id in admin_ids:
+async def notify_admins(
+    bot: Bot, session_maker: async_sessionmaker, admin_ids: set[int], key: str, **kwargs: object
+) -> None:
+    """Sends text `key` to every admin in the language they picked in the bot.
+
+    A kwarg may be a {"uk": ..., "en": ...} dict; the admin's language version is used.
+    """
+    async with session_maker() as session:
+        langs = {admin_id: (u.lang if (u := await session.get(User, admin_id)) else "uk") for admin_id in admin_ids}
+    for admin_id, lang in langs.items():
+        values = {k: (v[lang] if isinstance(v, dict) else v) for k, v in kwargs.items()}
         try:
-            await bot.send_message(admin_id, text)
+            await bot.send_message(admin_id, t(lang, key, **values))
         except (TelegramBadRequest, TelegramForbiddenError):
             logger.warning("Can't notify admin %s", admin_id)

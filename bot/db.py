@@ -6,7 +6,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
 def utcnow() -> datetime:
-    """Текущее время в UTC без tzinfo (одинаково работает в SQLite и Postgres)."""
+    """Current UTC time without tzinfo (works the same in SQLite and Postgres)."""
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
@@ -31,7 +31,7 @@ class Subscription(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"), unique=True)
     tariff: Mapped[str] = mapped_column(String(32))
-    expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)  # None = навсегда
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)  # None = lifetime
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     reminded_3d: Mapped[bool] = mapped_column(Boolean, default=False)
     reminded_1d: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -52,6 +52,6 @@ class Payment(Base):
 
 
 async def init_db(engine: AsyncEngine) -> None:
-    # Для демо таблицы создаются автоматически. В клиентских проектах — миграции через Alembic.
+    # Demo: tables are created automatically. Client projects should use Alembic migrations.
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)

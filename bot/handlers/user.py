@@ -11,6 +11,7 @@ from bot.config import Settings
 from bot.keyboards import LangCB, MenuCB, back_kb, lang_kb, main_menu_kb, my_sub_kb, tariffs_kb
 from bot.services import (
     create_invite_link,
+    detect_lang,
     get_or_create_user,
     get_subscription,
     notify_admins,
@@ -24,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 
 async def show_screen(callback: CallbackQuery, text: str, kb: InlineKeyboardMarkup) -> None:
-    """Редактирует текущее сообщение меню, а если нельзя — отправляет новое."""
+    """Edits the current menu message, or sends a new one if editing is not possible."""
     if isinstance(callback.message, Message):
         try:
             await callback.message.edit_text(text, reply_markup=kb)
@@ -59,7 +60,7 @@ async def cmd_menu(message: Message, session_maker: async_sessionmaker) -> None:
 
 @router.message(Command("id"))
 async def cmd_id(message: Message) -> None:
-    lang = "uk" if (message.from_user.language_code or "").startswith(("uk", "ru")) else "en"
+    lang = detect_lang(message.from_user.language_code)
     await message.answer(t(lang, "your_id", id=message.from_user.id))
 
 
@@ -105,10 +106,10 @@ async def on_menu(
     action = callback_data.action
 
     if action == "tariffs":
-        await show_screen(callback, t(lang, "tariffs_header"), tariffs_kb(lang))
+        await show_screen(callback, t(lang, "tariffs_header"), tariffs_kb(lang, settings.prices))
     elif action == "renew":
-        # Из уведомления: само уведомление оставляем в чате, тарифы — отдельным сообщением.
-        await bot.send_message(user.id, t(lang, "tariffs_header"), reply_markup=tariffs_kb(lang))
+        # From a notification: keep it in the chat and send plans as a separate message.
+        await bot.send_message(user.id, t(lang, "tariffs_header"), reply_markup=tariffs_kb(lang, settings.prices))
     elif action == "my_sub":
         active = sub_is_active(sub)
         lifetime = active and sub.expires_at is None
@@ -121,7 +122,7 @@ async def on_menu(
         await show_screen(callback, t(lang, "choose_lang"), lang_kb())
     elif action == "link":
         if not sub_is_active(sub):
-            await show_screen(callback, t(lang, "sub_none"), tariffs_kb(lang))
+            await show_screen(callback, t(lang, "sub_none"), tariffs_kb(lang, settings.prices))
         else:
             try:
                 link = await create_invite_link(bot, settings.channel_id, user.id)
@@ -129,7 +130,9 @@ async def on_menu(
             except TelegramBadRequest as e:
                 logger.error("Invite link error: %s", e)
                 await bot.send_message(user.id, t(lang, "invite_error"))
-                await notify_admins(bot, settings.admin_ids, f"❗ Не удалось создать ссылку для {user.id}: {e}")
+                await notify_admins(
+                    bot, session_maker, settings.admin_ids, "admin_link_failed", id=user.id, error=html.escape(str(e))
+                )
     else:  # back
         await show_screen(callback, welcome_text(lang, user.first_name), main_menu_kb(lang))
 
